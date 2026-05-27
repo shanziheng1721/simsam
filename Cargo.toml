@@ -4,3 +4,53 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+rand = "0.10.1"
+simsym = "0.1.0"
+rand_chacha = "0.10.0"
+
+[dev-dependencies]
+rand = { version = "0.10.1", features = ["std", "std_rng"] }
+
+[[example]]
+name = "triangle"
+path = "examples/triangle.rs"
+
+[[example]]
+name = "symbolic"
+path = "examples/symbolic.rs"
+
+[[example]]
+name = "arbitrary_cdf"
+path = "examples/arbitrary_cdf.rs"
+
+[[example]]
+name = "arbitrary_pdf"
+path = "examples/arbitrary_pdf.rs"
+
+[[example]]
+name = "symbolic_custom"
+path = "examples/symbolic_custom.rs"
+
+[[example]]
+name = "histogram"
+path = "examples/histogram.rs"
+
+[[example]]
+name = "loc_scale_truncated"
+path = "examples/loc_scale_truncated.rs"
+
+[[example]]
+name = "hermite_fast"
+path = "examples/hermite_fast.rs"
+
+[[example]]
+name = "parameterized_pdf"
+path = "examples/parameterized_pdf.rs"
+
+[[example]]
+name = "symbolic_parameters"
+path = "examples/symbolic_parameters.rs"
+
+[[example]]
+name = "symbolic_numeric_fallback"
+path = "examples/symbolic_numeric_fallback.rs"
