@@ -60,6 +60,8 @@ pub enum SampleError {
     IntegrationFailed,
     InvalidConfidence { confidence: f64 },
     RejectionSamplingFailed,
+    TdrBuildFailed,
+    TdrSamplingFailed,
     McmcNotInitialized,
     McmcFailed,
 }
@@ -75,6 +77,8 @@ impl fmt::Display for SampleError {
                 write!(f, "confidence {confidence} must be in (0, 1)")
             }
             Self::RejectionSamplingFailed => write!(f, "rejection sampler failed to accept"),
+            Self::TdrBuildFailed => write!(f, "tdr failed to build hat function"),
+            Self::TdrSamplingFailed => write!(f, "tdr failed to draw a sample"),
             Self::McmcNotInitialized => write!(f, "mcmc sampler not initialized (call init)"),
             Self::McmcFailed => write!(f, "mcmc sampler failed"),
         }

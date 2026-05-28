@@ -78,6 +78,15 @@ path = "examples/symbolic_multivar_rejection.rs"
 required-features = ["symbolic"]
 
 [[example]]
+name = "tdr_quadratic"
+path = "examples/tdr_quadratic.rs"
+
+[[example]]
+name = "tdr_symbolic"
+path = "examples/tdr_symbolic.rs"
+required-features = ["symbolic"]
+
+[[example]]
 name = "multivar_mh_uniform2d"
 path = "examples/multivar_mh_uniform2d.rs"
 

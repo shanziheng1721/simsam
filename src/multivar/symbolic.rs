@@ -9,6 +9,7 @@ pub struct SymbolicPdfNd {
     pdf: Expr,
     vars: Vec<Symbol>,
     support: HyperRect,
+    dpdfs: Vec<Expr>,
 }
 
 impl SymbolicPdfNd {
@@ -22,7 +23,16 @@ impl SymbolicPdfNd {
             ));
         }
         support.validate()?;
-        Ok(Self { pdf, vars, support })
+        let mut dpdfs = Vec::with_capacity(vars.len());
+        for &v in &vars {
+            dpdfs.push(pdf.clone().diff(v));
+        }
+        Ok(Self {
+            pdf,
+            vars,
+            support,
+            dpdfs,
+        })
     }
 
     pub fn vars(&self) -> &[Symbol] {
@@ -69,20 +79,16 @@ impl GradientLogPdfNd for SymbolicPdfNd {
         if !(p.is_finite() && p > 0.0) {
             return vec![f64::NEG_INFINITY; self.vars.len()];
         }
-        let mut out = Vec::with_capacity(self.vars.len());
         let env: Vec<(Symbol, f64)> = self
             .vars
             .iter()
             .copied()
             .zip(x.iter().copied())
             .collect();
-        for &var in self.vars.iter() {
-            let dp = self
-                .pdf
-                .clone()
-                .diff(var)
-                .eval_f64(&env)
-                .unwrap_or(f64::NAN);
+
+        let mut out = Vec::with_capacity(self.vars.len());
+        for dexpr in &self.dpdfs {
+            let dp = dexpr.clone().eval_f64(&env).unwrap_or(f64::NAN);
             out.push(dp / p);
         }
         out

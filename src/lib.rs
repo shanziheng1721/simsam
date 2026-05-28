@@ -38,8 +38,11 @@ mod support;
 pub use continuous::{
     from_cdf_fn, from_histogram, from_pdf_fn, from_pdf_loc_scale, AffineCdf, BuildOptions, Cdf,
     CdfFn, CdfSource, ContinuousSampler, HasSupport, HermitePpfTable, HistogramPdf, IntegratedPdf,
-    InvertOptions, LocScale, Pdf, PdfFn, PpfMethod, Truncated, default_quad_tol,
+    InvertOptions, LocScale, Pdf, PdfFn, PpfMethod, Truncated, default_quad_tol, tdr_from_fns,
+    Dpdf, DpdfFn, TdrOptions, TdrSampler, TdrTransform,
 };
+#[cfg(feature = "symbolic")]
+pub use continuous::SymbolicPdfDpdf1d;
 #[cfg(feature = "symbolic")]
 pub use continuous::{SymbolicContinuous, SymbolicPdfAdapter};
 pub use discrete::{CdfDiscrete, DiscreteSampler, Pmf};
@@ -200,18 +203,18 @@ mod tests {
         let log_pdf = PdfNdFn::new(|_| 1.0, support);
         let mut mh = MetropolisHastingsNd::new(log_pdf, MhOptions::default()).unwrap();
         mh.init().unwrap();
-        let n = 2000;
+        let samples = mh.sample_n(2000).unwrap();
         let mut sx = 0.0;
         let mut sy = 0.0;
-        for _ in 0..n {
-            let v = mh.sample().unwrap();
+        for v in &samples {
             sx += v[0];
             sy += v[1];
         }
-        let mx = sx / n as f64;
-        let my = sy / n as f64;
+        let mx = sx / samples.len() as f64;
+        let my = sy / samples.len() as f64;
         assert!((mx - 0.5).abs() < 0.07, "mx={mx}");
         assert!((my - 0.5).abs() < 0.07, "my={my}");
+        assert!(mh.accept_rate() > 0.01, "accept_rate={}", mh.accept_rate());
     }
 
     #[test]

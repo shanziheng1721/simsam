@@ -34,13 +34,13 @@ fn main() {
     .expect("hmc");
     hmc.init().expect("init");
 
-    // Symbolic gradients are relatively expensive right now; keep this example small.
-    let burn_in = 50;
+    // Symbolic gradients are cached now; keep this moderate.
+    let burn_in = 300;
     for _ in 0..burn_in {
         let _ = hmc.sample().expect("sample");
     }
 
-    let n = 100;
+    let n = 2_000;
     let mut sx = 0.0;
     let mut sy = 0.0;
     for _ in 0..n {

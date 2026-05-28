@@ -7,6 +7,16 @@ use rand::{Rng, RngExt};
 pub struct MhOptions {
     /// Random-walk proposal step size (per coordinate).
     pub step_size: f64,
+    /// Burn-in steps before collecting samples.
+    pub burn_in: usize,
+    /// Keep one sample every `thin` accepted/attempted steps (>= 1).
+    pub thin: usize,
+    /// Target acceptance rate for adaptation.
+    pub target_accept: f64,
+    /// Number of initial steps to adapt `step_size`.
+    pub adapt_steps: usize,
+    pub step_size_min: f64,
+    pub step_size_max: f64,
     /// Maximum attempts to find an initial finite log-density point.
     pub init_trials: usize,
 }
@@ -15,6 +25,12 @@ impl Default for MhOptions {
     fn default() -> Self {
         Self {
             step_size: 0.25,
+            burn_in: 1_000,
+            thin: 1,
+            target_accept: 0.25,
+            adapt_steps: 2_000,
+            step_size_min: 1e-4,
+            step_size_max: 10.0,
             init_trials: 100_000,
         }
     }
@@ -27,6 +43,8 @@ pub struct MetropolisHastingsNd<P> {
     opts: MhOptions,
     x: Option<Vec<f64>>,
     logp: f64,
+    proposed: u64,
+    accepted: u64,
 }
 
 impl<P> MetropolisHastingsNd<P>
@@ -42,6 +60,8 @@ where
             opts,
             x: None,
             logp: f64::NEG_INFINITY,
+            proposed: 0,
+            accepted: 0,
         })
     }
 
@@ -65,6 +85,8 @@ where
             if lp.is_finite() {
                 self.logp = lp;
                 self.x = Some(x);
+                self.proposed = 0;
+                self.accepted = 0;
                 return Ok(());
             }
         }
@@ -75,10 +97,14 @@ where
         self.step_with_rng(&mut rand::rng()).map(|v| v.as_slice())
     }
 
-    pub fn step_with_rng<R: Rng + ?Sized>(&mut self, rng: &mut R) -> Result<&Vec<f64>, SampleError> {
+    pub fn step_with_rng<R: Rng + ?Sized>(
+        &mut self,
+        rng: &mut R,
+    ) -> Result<&Vec<f64>, SampleError> {
         if self.x.is_none() {
             return Err(SampleError::McmcNotInitialized);
         }
+        self.proposed += 1;
         let dim = self.support.dim();
         let mut y = self.x.as_ref().unwrap().clone();
         for i in 0..dim {
@@ -98,7 +124,9 @@ where
         if u.ln() < log_alpha {
             *self.x.as_mut().unwrap() = y;
             self.logp = logp_y;
+            self.accepted += 1;
         }
+        self.maybe_adapt_step_size();
         Ok(self.x.as_ref().unwrap())
     }
 
@@ -108,6 +136,57 @@ where
 
     pub fn sample_with_rng<R: Rng + ?Sized>(&mut self, rng: &mut R) -> Result<Vec<f64>, SampleError> {
         self.step_with_rng(rng).map(|x| x.clone())
+    }
+
+    pub fn accept_rate(&self) -> f64 {
+        if self.proposed == 0 {
+            0.0
+        } else {
+            self.accepted as f64 / self.proposed as f64
+        }
+    }
+
+    /// Collect `n` samples, applying burn-in and thinning (as configured in `MhOptions`).
+    pub fn sample_n(&mut self, n: usize) -> Result<Vec<Vec<f64>>, SampleError> {
+        self.sample_n_with_rng(&mut rand::rng(), n)
+    }
+
+    pub fn sample_n_with_rng<R: Rng + ?Sized>(
+        &mut self,
+        rng: &mut R,
+        n: usize,
+    ) -> Result<Vec<Vec<f64>>, SampleError> {
+        if self.x.is_none() {
+            return Err(SampleError::McmcNotInitialized);
+        }
+        let thin = self.opts.thin.max(1);
+        for _ in 0..self.opts.burn_in {
+            let _ = self.step_with_rng(rng)?;
+        }
+        let mut out = Vec::with_capacity(n);
+        while out.len() < n {
+            for _ in 0..thin {
+                let _ = self.step_with_rng(rng)?;
+            }
+            out.push(self.x.as_ref().unwrap().clone());
+        }
+        Ok(out)
+    }
+
+    fn maybe_adapt_step_size(&mut self) {
+        if self.opts.adapt_steps == 0 {
+            return;
+        }
+        if self.proposed as usize > self.opts.adapt_steps {
+            return;
+        }
+        // Simple Robbins–Monro style update on log(step_size).
+        let t = self.proposed as f64;
+        let eta = 1.0 / (t + 10.0).sqrt();
+        let ar = self.accept_rate();
+        let delta = (ar - self.opts.target_accept).clamp(-0.2, 0.2);
+        let log_s = self.opts.step_size.ln() + eta * delta;
+        self.opts.step_size = log_s.exp().clamp(self.opts.step_size_min, self.opts.step_size_max);
     }
 }
 
