@@ -31,6 +31,7 @@
 mod continuous;
 mod discrete;
 mod error;
+mod multivar;
 mod sample;
 mod support;
 
@@ -43,6 +44,18 @@ pub use continuous::{
 pub use continuous::{SymbolicContinuous, SymbolicPdfAdapter};
 pub use discrete::{CdfDiscrete, DiscreteSampler, Pmf};
 pub use error::{BuildError, SampleError};
+pub use multivar::{HasSupportNd, HyperRect, PdfNd, PdfNdFn, RejectionOptions, RejectionSamplerNd};
+pub use multivar::{
+    CdfMcEstimator, CdfMcOptions, GaussianCopula, MhOptions, MetropolisHastingsNd,
+};
+pub use multivar::{
+    ConditionalFactorSampler, ConditionalFactorization, ConditionalSampler, GibbsOptions,
+    GibbsSamplerNd, HmcOptions, HmcSamplerNd, LogPdfNd,
+};
+#[cfg(feature = "symbolic")]
+pub use multivar::GradientLogPdfNd;
+#[cfg(feature = "symbolic")]
+pub use multivar::SymbolicPdfNd;
 pub use support::Interval;
 
 #[cfg(test)]
@@ -160,6 +173,105 @@ mod tests {
         let mut rng = rand::rng();
         let x: f64 = RandDist::sample(&sampler, &mut rng);
         assert!((0.0..=1.0).contains(&x));
+    }
+
+    #[test]
+    fn multivar_rejection_uniform_2d() {
+        let support = HyperRect::new(vec![0.0, 0.0], vec![1.0, 1.0]).unwrap();
+        let pdf = PdfNdFn::new(|_| 1.0, support);
+        let sampler = RejectionSamplerNd::new(pdf, 1.0, RejectionOptions::default()).unwrap();
+        let n = 2000;
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        for _ in 0..n {
+            let v = sampler.sample().unwrap();
+            sx += v[0];
+            sy += v[1];
+        }
+        let mx = sx / n as f64;
+        let my = sy / n as f64;
+        assert!((mx - 0.5).abs() < 0.06, "mx={mx}");
+        assert!((my - 0.5).abs() < 0.06, "my={my}");
+    }
+
+    #[test]
+    fn multivar_mh_uniform_2d_smoke() {
+        let support = HyperRect::new(vec![0.0, 0.0], vec![1.0, 1.0]).unwrap();
+        let log_pdf = PdfNdFn::new(|_| 1.0, support);
+        let mut mh = MetropolisHastingsNd::new(log_pdf, MhOptions::default()).unwrap();
+        mh.init().unwrap();
+        let n = 2000;
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        for _ in 0..n {
+            let v = mh.sample().unwrap();
+            sx += v[0];
+            sy += v[1];
+        }
+        let mx = sx / n as f64;
+        let my = sy / n as f64;
+        assert!((mx - 0.5).abs() < 0.07, "mx={mx}");
+        assert!((my - 0.5).abs() < 0.07, "my={my}");
+    }
+
+    #[test]
+    fn multivar_cdf_mc_uniform_2d() {
+        let support = HyperRect::new(vec![0.0, 0.0], vec![1.0, 1.0]).unwrap();
+        let pdf = PdfNdFn::new(|_| 1.0, support);
+        let mut est = CdfMcEstimator::new(
+            pdf,
+            CdfMcOptions {
+                normalization_samples: 20_000,
+                cdf_samples: 20_000,
+            },
+        )
+        .unwrap();
+        let p = est.cdf(&[0.25, 0.4]).unwrap();
+        assert!((p - 0.1).abs() < 0.05, "p={p}");
+    }
+
+    #[test]
+    fn multivar_copula_independent_uniforms() {
+        // Independent copula with uniform marginals on [0,1].
+        let corr = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
+        let cop = GaussianCopula::new(corr).unwrap();
+
+        let s0 =
+            from_cdf_fn(|x| x, Interval::new(0.0, 1.0).unwrap(), BuildOptions::default()).unwrap();
+        let s1 =
+            from_cdf_fn(|x| x, Interval::new(0.0, 1.0).unwrap(), BuildOptions::default()).unwrap();
+
+        let mut rng = rand::rng();
+        let n = 3000;
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        let mut sxy = 0.0;
+        for _ in 0..n {
+            let v = cop
+                .sample_with_ppfs(&mut rng, &[&|u| s0.ppf(u), &|u| s1.ppf(u)])
+                .unwrap();
+            sx += v[0];
+            sy += v[1];
+            sxy += v[0] * v[1];
+        }
+        let mx = sx / n as f64;
+        let my = sy / n as f64;
+        let cov = sxy / n as f64 - mx * my;
+        assert!(cov.abs() < 0.03, "cov={cov}");
+    }
+
+    #[test]
+    #[cfg(feature = "symbolic")]
+    fn multivar_symbolic_pdf_smoke() {
+        use simsym::prelude::*;
+
+        let x = symbol("x");
+        let y = symbol("y");
+        let expr = simsym::expr::const_(rational(1, 1)) - (x.pow(2) + y.pow(2));
+        let support = HyperRect::new(vec![-1.0, -1.0], vec![1.0, 1.0]).unwrap();
+        let pdf = SymbolicPdfNd::new(expr, vec![x, y], support).unwrap();
+        let v = pdf.pdf(&[0.0, 0.0]);
+        assert!((v - 1.0).abs() < 1e-12);
     }
 
 }

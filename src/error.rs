@@ -15,6 +15,8 @@ pub enum BuildError {
     InvalidScale,
     InvalidHistogram,
     TruncationOutOfSupport,
+    InvalidDimension,
+    InvalidPdfMax,
 }
 
 impl fmt::Display for BuildError {
@@ -34,6 +36,8 @@ impl fmt::Display for BuildError {
             Self::TruncationOutOfSupport => {
                 write!(f, "truncation interval must lie inside base support")
             }
+            Self::InvalidDimension => write!(f, "invalid dimension"),
+            Self::InvalidPdfMax => write!(f, "pdf_max must be finite and positive"),
         }
     }
 }
@@ -55,6 +59,9 @@ pub enum SampleError {
     PdfRequired,
     IntegrationFailed,
     InvalidConfidence { confidence: f64 },
+    RejectionSamplingFailed,
+    McmcNotInitialized,
+    McmcFailed,
 }
 
 impl fmt::Display for SampleError {
@@ -67,6 +74,9 @@ impl fmt::Display for SampleError {
             Self::InvalidConfidence { confidence } => {
                 write!(f, "confidence {confidence} must be in (0, 1)")
             }
+            Self::RejectionSamplingFailed => write!(f, "rejection sampler failed to accept"),
+            Self::McmcNotInitialized => write!(f, "mcmc sampler not initialized (call init)"),
+            Self::McmcFailed => write!(f, "mcmc sampler failed"),
         }
     }
 }
