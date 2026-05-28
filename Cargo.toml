@@ -5,8 +5,12 @@ edition = "2024"
 
 [dependencies]
 rand = "0.10.1"
-simsym = "0.1.0"
+simsym = { version = "0.1.0", optional = true }
 rand_chacha = "0.10.0"
+
+[features]
+default = []
+symbolic = ["dep:simsym"]
 
 [dev-dependencies]
 rand = { version = "0.10.1", features = ["std", "std_rng"] }
@@ -23,6 +27,7 @@ path = "examples/triangle.rs"
 [[example]]
 name = "symbolic"
 path = "examples/symbolic.rs"
+required-features = ["symbolic"]
 
 [[example]]
 name = "arbitrary_cdf"
@@ -35,6 +40,7 @@ path = "examples/arbitrary_pdf.rs"
 [[example]]
 name = "symbolic_custom"
 path = "examples/symbolic_custom.rs"
+required-features = ["symbolic"]
 
 [[example]]
 name = "histogram"
@@ -55,7 +61,9 @@ path = "examples/parameterized_pdf.rs"
 [[example]]
 name = "symbolic_parameters"
 path = "examples/symbolic_parameters.rs"
+required-features = ["symbolic"]
 
 [[example]]
 name = "symbolic_numeric_fallback"
 path = "examples/symbolic_numeric_fallback.rs"
+required-features = ["symbolic"]

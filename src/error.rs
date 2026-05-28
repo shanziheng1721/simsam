@@ -8,7 +8,9 @@ pub enum BuildError {
     NonPositiveMass,
     NonFiniteValue(&'static str),
     NormalizationFailed,
+    #[cfg(feature = "symbolic")]
     SymbolicIntegrationFailed,
+    #[cfg(feature = "symbolic")]
     SimsymEval(simsym::EvalError),
     InvalidScale,
     InvalidHistogram,
@@ -23,7 +25,9 @@ impl fmt::Display for BuildError {
             Self::NonPositiveMass => write!(f, "probability mass must be positive"),
             Self::NonFiniteValue(ctx) => write!(f, "non-finite value in {ctx}"),
             Self::NormalizationFailed => write!(f, "failed to normalize PDF on support"),
+            #[cfg(feature = "symbolic")]
             Self::SymbolicIntegrationFailed => write!(f, "symbolic integration failed"),
+            #[cfg(feature = "symbolic")]
             Self::SimsymEval(e) => write!(f, "simsym evaluation error: {e}"),
             Self::InvalidScale => write!(f, "scale must be finite and positive"),
             Self::InvalidHistogram => write!(f, "invalid histogram edges or counts"),
@@ -36,6 +40,7 @@ impl fmt::Display for BuildError {
 
 impl std::error::Error for BuildError {}
 
+#[cfg(feature = "symbolic")]
 impl From<simsym::EvalError> for BuildError {
     fn from(e: simsym::EvalError) -> Self {
         Self::SimsymEval(e)

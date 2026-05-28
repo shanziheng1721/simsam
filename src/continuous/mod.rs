@@ -6,6 +6,7 @@ mod invert;
 mod loc_scale;
 mod sampler;
 mod stats;
+#[cfg(feature = "symbolic")]
 mod symbolic;
 mod traits;
 mod truncated;
@@ -20,6 +21,7 @@ pub use sampler::{
     from_cdf_fn, from_histogram, from_pdf_fn, from_pdf_loc_scale, BuildOptions, ContinuousSampler,
     CdfSource, PpfMethod,
 };
+#[cfg(feature = "symbolic")]
 pub use symbolic::{SymbolicContinuous, SymbolicPdfAdapter};
 pub use traits::{Cdf, CdfFn, HasSupport, Pdf, PdfFn};
 pub use truncated::Truncated;

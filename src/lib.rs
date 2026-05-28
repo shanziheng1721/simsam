@@ -37,9 +37,10 @@ mod support;
 pub use continuous::{
     from_cdf_fn, from_histogram, from_pdf_fn, from_pdf_loc_scale, AffineCdf, BuildOptions, Cdf,
     CdfFn, CdfSource, ContinuousSampler, HasSupport, HermitePpfTable, HistogramPdf, IntegratedPdf,
-    InvertOptions, LocScale, Pdf, PdfFn, PpfMethod, SymbolicContinuous, SymbolicPdfAdapter,
-    Truncated, default_quad_tol,
+    InvertOptions, LocScale, Pdf, PdfFn, PpfMethod, Truncated, default_quad_tol,
 };
+#[cfg(feature = "symbolic")]
+pub use continuous::{SymbolicContinuous, SymbolicPdfAdapter};
 pub use discrete::{CdfDiscrete, DiscreteSampler, Pmf};
 pub use error::{BuildError, SampleError};
 pub use support::Interval;
@@ -96,6 +97,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "symbolic")]
     fn symbolic_triangular() {
         use simsym::prelude::*;
 
