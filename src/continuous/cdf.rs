@@ -1,5 +1,5 @@
 use crate::continuous::integrate::{integrate_pdf, normalize_pdf};
-use crate::continuous::traits::{Cdf, Pdf};
+use crate::continuous::traits::{Cdf, HasSupport, Pdf};
 use crate::error::BuildError;
 use crate::support::Interval;
 
@@ -101,5 +101,23 @@ where
 
     pub fn normalized_pdf(&self, x: f64) -> f64 {
         self.pdf.pdf(x) / self.norm
+    }
+}
+
+impl<P> Pdf for IntegratedPdf<P>
+where
+    P: Pdf,
+{
+    fn pdf(&self, x: f64) -> f64 {
+        self.normalized_pdf(x)
+    }
+}
+
+impl<P> HasSupport for IntegratedPdf<P>
+where
+    P: Pdf,
+{
+    fn support(&self) -> Interval {
+        self.support
     }
 }

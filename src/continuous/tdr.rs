@@ -43,8 +43,8 @@ impl<F> HasSupport for DpdfFn<F> {
 /// SciPy supports `c=0` (log) and `c=-0.5` (1/sqrt). We start with log-concave (`c=0`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TdrTransform {
-    Log,      // c = 0
-    InvSqrt,  // c = -0.5
+    Log,     // c = 0
+    InvSqrt, // c = -0.5
 }
 
 impl Default for TdrTransform {
@@ -70,7 +70,10 @@ pub struct TdrOptions {
 impl Default for TdrOptions {
     fn default() -> Self {
         Self {
-            support: Interval { lo: -1.0, hi: 1.0 },
+            support: Interval {
+                lo: -1.0,
+                hi: 1.0,
+            },
             mode: None,
             center: None,
             transform: TdrTransform::default(),
@@ -80,33 +83,25 @@ impl Default for TdrOptions {
     }
 }
 
-/// 1D Transformed Density Rejection sampler.
-///
-/// This is a **log-concave subset** implementation aiming to match SciPy's `TransformedDensityRejection`
-/// API shape while remaining pure Rust. PDF need not be normalized.
-pub struct TdrSampler<P, D> {
-    pdf: P,
-    dpdf: D,
+/// Built TDR hat function; immutable after construction.
+pub struct TdrHat {
     opts: TdrOptions,
-    built: bool,
-    // log-concave envelope data (ARS-style)
     xs: Vec<f64>,
     logfs: Vec<f64>,
     slopes: Vec<f64>,
-    // intersection points between tangents, length = n-1
     zs: Vec<f64>,
-    // segment weights for hat, length = n
     ws: Vec<f64>,
     w_cdf: Vec<f64>,
     uniform_hat_max: Option<f64>,
 }
 
-impl<P, D> TdrSampler<P, D>
-where
-    P: Pdf + HasSupport,
-    D: Dpdf + HasSupport,
-{
-    pub fn new(pdf: P, dpdf: D, opts: TdrOptions) -> Result<Self, BuildError> {
+impl TdrHat {
+    /// Build the hat function from PDF and dPDF at construction time.
+    pub fn try_build<P, D>(pdf: &P, dpdf: &D, opts: TdrOptions) -> Result<Self, BuildError>
+    where
+        P: Pdf + HasSupport,
+        D: Dpdf + HasSupport,
+    {
         opts.support.validate()?;
         let ps = pdf.support();
         let ds = dpdf.support();
@@ -115,11 +110,9 @@ where
                 "pdf/dpdf support must match opts.support",
             ));
         }
-        Ok(Self {
-            pdf,
-            dpdf,
+
+        let mut hat = Self {
             opts,
-            built: false,
             xs: Vec::new(),
             logfs: Vec::new(),
             slopes: Vec::new(),
@@ -127,76 +120,26 @@ where
             ws: Vec::new(),
             w_cdf: Vec::new(),
             uniform_hat_max: None,
-        })
+        };
+        hat.build(pdf, dpdf).map_err(|_| BuildError::TdrBuildFailed)?;
+        Ok(hat)
     }
 
     pub fn support(&self) -> Interval {
         self.opts.support
     }
 
-    pub fn sample(&mut self) -> Result<f64, SampleError> {
-        self.sample_with_rng(&mut rand::rng())
-    }
-}
-
-/// Convenience constructor from closures.
-pub fn tdr_from_fns<F, G>(
-    pdf: F,
-    dpdf: G,
-    support: Interval,
-    mut opts: TdrOptions,
-) -> Result<TdrSampler<PdfFn<F>, DpdfFn<G>>, BuildError>
-where
-    F: Fn(f64) -> f64,
-    G: Fn(f64) -> f64,
-{
-    opts.support = support;
-    let p = PdfFn::new(pdf, support);
-    let d = DpdfFn::new(dpdf, support);
-    TdrSampler::new(p, d, opts)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn quadratic_mean_near_zero() {
-        let support = Interval::new(-1.0, 1.0).unwrap();
-        let opts = TdrOptions {
-            support,
-            transform: TdrTransform::InvSqrt,
-            ..TdrOptions::default()
-        };
-        let mut tdr = tdr_from_fns(|x| 1.0 - x * x, |x| -2.0 * x, support, opts).unwrap();
-        let n = 20_000;
-        let mut sum = 0.0;
-        for _ in 0..n {
-            sum += tdr.sample().unwrap();
-        }
-        let mean = sum / n as f64;
-        assert!(mean.abs() < 0.03, "mean={mean}");
-    }
-}
-
-impl<P, D> TdrSampler<P, D>
-where
-    P: Pdf + HasSupport,
-    D: Dpdf + HasSupport,
-{
-    pub fn sample_with_rng<R: Rng + ?Sized>(&mut self, rng: &mut R) -> Result<f64, SampleError> {
-        if !self.built {
-            self.build()?;
-            self.built = true;
-        }
-
+    pub fn sample_with_rng<P: Pdf, R: Rng + ?Sized>(
+        &self,
+        pdf: &P,
+        rng: &mut R,
+    ) -> Result<f64, SampleError> {
         if let Some(m) = self.uniform_hat_max {
-            // Fallback rejection sampling with uniform proposal on support.
             let sup = self.opts.support;
             for _ in 0..self.opts.max_trials.max(1) {
                 let u: f64 = rng.random();
                 let x = sup.lo + u * (sup.hi - sup.lo);
-                let fx = self.pdf.pdf(x);
+                let fx = pdf.pdf(x);
                 if !(fx.is_finite() && fx >= 0.0) {
                     continue;
                 }
@@ -210,8 +153,7 @@ where
 
         for _ in 0..self.opts.max_trials.max(1) {
             let x = self.sample_from_hat(rng)?;
-            // acceptance test: u <= f(x)/hat(x)
-            let fx = self.pdf.pdf(x);
+            let fx = pdf.pdf(x);
             if !(fx.is_finite() && fx > 0.0) {
                 continue;
             }
@@ -224,18 +166,19 @@ where
         Err(SampleError::TdrSamplingFailed)
     }
 
-    fn build(&mut self) -> Result<(), SampleError> {
+    fn build<P, D>(&mut self, pdf: &P, dpdf: &D) -> Result<(), SampleError>
+    where
+        P: Pdf,
+        D: Dpdf,
+    {
         let support = self.opts.support;
         if self.opts.transform == TdrTransform::InvSqrt {
-            // Minimal, robust fallback: estimate a global maximum and use classic rejection.
-            // This keeps the SciPy-like TDR surface usable for non-log-concave densities
-            // (e.g. f(x)=1-x^2) while we iteratively implement full TDR(c=-0.5).
             let grid = self.opts.construction_points.max(32);
             let mut m = 0.0;
             for i in 0..grid {
                 let t = (i as f64 + 0.5) / grid as f64;
                 let x = support.lo + t * (support.hi - support.lo);
-                let fx = self.pdf.pdf(x);
+                let fx = pdf.pdf(x);
                 if fx.is_finite() && fx > m {
                     m = fx;
                 }
@@ -254,37 +197,32 @@ where
         let n = self.opts.construction_points.max(4);
         let mut pts = Vec::with_capacity(n + 2);
 
-        // include mode/center if present
         if let Some(m) = self.opts.mode {
             pts.push(m);
         } else if let Some(c) = self.opts.center {
             pts.push(c);
         }
-        // add evenly spaced points
         for i in 0..n {
             let t = (i as f64 + 0.5) / n as f64;
             pts.push(support.lo + t * (support.hi - support.lo));
         }
-        // always include endpoints (slightly inside)
         let eps = 1e-12 * (support.hi - support.lo);
         pts.push(support.lo + eps);
         pts.push(support.hi - eps);
 
-        // filter & sort & unique-ish
         pts.retain(|&x| x.is_finite() && x > support.lo && x < support.hi);
         pts.sort_by(|a, b| a.partial_cmp(b).unwrap());
         pts.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
 
-        // compute logf and slope = d/dx log f = dpdf/pdf
         let mut xs = Vec::new();
         let mut logfs = Vec::new();
         let mut slopes = Vec::new();
         for &x in &pts {
-            let fx = self.pdf.pdf(x);
+            let fx = pdf.pdf(x);
             if !(fx.is_finite() && fx > 0.0) {
                 continue;
             }
-            let dfx = self.dpdf.dpdf(x);
+            let dfx = dpdf.dpdf(x);
             if !dfx.is_finite() {
                 continue;
             }
@@ -297,7 +235,6 @@ where
             return Err(SampleError::TdrBuildFailed);
         }
 
-        // intersections
         let mut zs = Vec::with_capacity(xs.len() - 1);
         for i in 0..xs.len() - 1 {
             let s0 = slopes[i];
@@ -310,7 +247,6 @@ where
             zs.push(z);
         }
 
-        // clamp and enforce increasing within support
         for z in &mut zs {
             if !z.is_finite() {
                 return Err(SampleError::TdrBuildFailed);
@@ -323,7 +259,6 @@ where
             }
         }
 
-        // weights per segment
         let mut ws = Vec::with_capacity(xs.len());
         for i in 0..xs.len() {
             let (l, r) = seg_bounds(support, &zs, i);
@@ -360,7 +295,6 @@ where
     }
 
     fn hat_log(&self, x: f64) -> f64 {
-        // find segment by z intersections
         let i = seg_index(&self.zs, x);
         let a = self.slopes[i];
         let b = self.logfs[i] - a * self.xs[i];
@@ -388,6 +322,77 @@ where
     }
 }
 
+/// 1D Transformed Density Rejection sampler.
+pub struct TdrSampler<P, D> {
+    pdf: P,
+    #[allow(dead_code)]
+    dpdf: D,
+    hat: TdrHat,
+}
+
+impl<P, D> TdrSampler<P, D>
+where
+    P: Pdf + HasSupport,
+    D: Dpdf + HasSupport,
+{
+    pub fn new(pdf: P, dpdf: D, opts: TdrOptions) -> Result<Self, BuildError> {
+        let hat = TdrHat::try_build(&pdf, &dpdf, opts)?;
+        Ok(Self { pdf, dpdf, hat })
+    }
+
+    pub fn support(&self) -> Interval {
+        self.hat.support()
+    }
+
+    pub fn sample(&self) -> Result<f64, SampleError> {
+        self.sample_with_rng(&mut rand::rng())
+    }
+
+    pub fn sample_with_rng<R: Rng + ?Sized>(&self, rng: &mut R) -> Result<f64, SampleError> {
+        self.hat.sample_with_rng(&self.pdf, rng)
+    }
+}
+
+/// Convenience constructor from closures.
+pub fn tdr_from_fns<F, G>(
+    pdf: F,
+    dpdf: G,
+    support: Interval,
+    mut opts: TdrOptions,
+) -> Result<TdrSampler<PdfFn<F>, DpdfFn<G>>, BuildError>
+where
+    F: Fn(f64) -> f64,
+    G: Fn(f64) -> f64,
+{
+    opts.support = support;
+    let p = PdfFn::new(pdf, support);
+    let d = DpdfFn::new(dpdf, support);
+    TdrSampler::new(p, d, opts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quadratic_mean_near_zero() {
+        let support = Interval::new(-1.0, 1.0).unwrap();
+        let opts = TdrOptions {
+            support,
+            transform: TdrTransform::InvSqrt,
+            ..TdrOptions::default()
+        };
+        let tdr = tdr_from_fns(|x| 1.0 - x * x, |x| -2.0 * x, support, opts).unwrap();
+        let n = 20_000;
+        let mut sum = 0.0;
+        for _ in 0..n {
+            sum += tdr.sample().unwrap();
+        }
+        let mean = sum / n as f64;
+        assert!(mean.abs() < 0.03, "mean={mean}");
+    }
+}
+
 fn seg_index(zs: &[f64], x: f64) -> usize {
     match zs.binary_search_by(|z| z.partial_cmp(&x).unwrap()) {
         Ok(i) => i + 1,
@@ -402,13 +407,12 @@ fn seg_bounds(support: Interval, zs: &[f64], i: usize) -> (f64, f64) {
 }
 
 fn exp_affine_integral(a: f64, b: f64, l: f64, r: f64) -> f64 {
-    // ∫_l^r exp(a x + b) dx
-    if (a).abs() < 1e-12 {
-        (r - l) * (b.exp())
+    if a.abs() < 1e-12 {
+        (r - l) * b.exp()
     } else {
         let al = a * l;
         let ar = a * r;
-        (b.exp() / a) * ((ar).exp() - (al).exp())
+        (b.exp() / a) * (ar.exp() - al.exp())
     }
 }
 
@@ -417,11 +421,10 @@ fn sample_exp_affine<R: Rng + ?Sized>(rng: &mut R, a: f64, _b: f64, l: f64, r: f
     if a.abs() < 1e-12 {
         return l + u * (r - l);
     }
-    // Sample from truncated exp(ax+b) ∝ exp(a x)
     let el = (a * l).exp();
     let er = (a * r).exp();
     let v = el + u * (er - el);
-    (v.ln()) / a
+    v.ln() / a
 }
 
 #[cfg(feature = "symbolic")]
@@ -435,28 +438,32 @@ pub mod symbolic {
         pub dpdf: Expr,
         pub var: Symbol,
         pub support: Interval,
+        pub norm: f64,
     }
 
     impl SymbolicPdfDpdf1d {
-        pub fn new(pdf: Expr, var: Symbol, support: Interval) -> Self {
+        pub fn new(pdf: Expr, var: Symbol, support: Interval, norm: f64) -> Self {
             let dpdf = pdf.clone().diff(var);
             Self {
                 pdf,
                 dpdf,
                 var,
                 support,
+                norm,
             }
         }
     }
 
     impl Pdf for SymbolicPdfDpdf1d {
         fn pdf(&self, x: f64) -> f64 {
-            simsym::eval::eval_f64(&self.pdf, &[(self.var, x)]).unwrap_or(0.0)
+            let raw = simsym::eval::eval_f64(&self.pdf, &[(self.var, x)]).unwrap_or(0.0);
+            raw / self.norm
         }
     }
     impl Dpdf for SymbolicPdfDpdf1d {
         fn dpdf(&self, x: f64) -> f64 {
-            simsym::eval::eval_f64(&self.dpdf, &[(self.var, x)]).unwrap_or(0.0)
+            let raw = simsym::eval::eval_f64(&self.dpdf, &[(self.var, x)]).unwrap_or(0.0);
+            raw / self.norm
         }
     }
     impl HasSupport for SymbolicPdfDpdf1d {
@@ -465,4 +472,3 @@ pub mod symbolic {
         }
     }
 }
-

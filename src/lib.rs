@@ -9,6 +9,7 @@
 //! - `pdf`, `cdf`, `ppf`, `sf`, `isf`, `logpdf`, `logcdf`, `logsf`
 //! - `mean`, `var`, `std`, `median`, `entropy`, `expect`, `interval`
 //! - Fast sampling via [`HermitePpfTable`](continuous::HermitePpfTable) ([`BuildOptions::with_hermite`])
+//!   or TDR ([`BuildOptions::with_tdr`])
 //! - [`LocScale`](continuous::LocScale), [`Truncated`](continuous::Truncated), [`HistogramPdf`](continuous::HistogramPdf)
 //!
 //! ## Limitations
@@ -19,10 +20,10 @@
 //! ## Example
 //!
 //! ```
-//! use simsam::{from_pdf_fn, BuildOptions, Interval};
+//! use simsam::{from_pdf_fn, Interval};
 //!
 //! let support = Interval::new(0.0, 1.0).unwrap();
-//! let sampler = from_pdf_fn(|x| 3.0 * x * x, support, BuildOptions::default()).unwrap();
+//! let sampler = from_pdf_fn(|x| 3.0 * x * x, support).unwrap();
 //! let x = sampler.sample().unwrap();
 //! assert!((0.0..=1.0).contains(&x));
 //! assert!((sampler.mean().unwrap() - 0.75).abs() < 1e-2);
@@ -36,10 +37,12 @@ mod sample;
 mod support;
 
 pub use continuous::{
-    from_cdf_fn, from_histogram, from_pdf_fn, from_pdf_loc_scale, AffineCdf, BuildOptions, Cdf,
-    CdfFn, CdfSource, ContinuousSampler, HasSupport, HermitePpfTable, HistogramPdf, IntegratedPdf,
-    InvertOptions, LocScale, Pdf, PdfFn, PpfMethod, Truncated, default_quad_tol, tdr_from_fns,
-    Dpdf, DpdfFn, TdrOptions, TdrSampler, TdrTransform,
+    from_cdf_fn, from_histogram, from_pdf_dpdf_fn, from_pdf_fn, from_pdf_fn_with_options,
+    from_pdf_loc_scale, AffineCdf,
+    BuildOptions, Cdf, CdfFn, CdfSource, ContinuousSampler, HasSupport, HermitePpfTable,
+    HistogramPdf, IntegratedPdf, InvertOptions, LocScale, Pdf, PdfFn, PpfMethod, SampleMethod,
+    Truncated, TdrBuildConfig, default_quad_tol, tdr_from_fns, Dpdf, DpdfFn, TdrHat, TdrOptions,
+    TdrSampler, TdrTransform,
 };
 #[cfg(feature = "symbolic")]
 pub use continuous::SymbolicPdfDpdf1d;
@@ -68,7 +71,7 @@ mod tests {
     #[test]
     fn uniform_pdf_mean() {
         let support = Interval::new(0.0, 1.0).unwrap();
-        let sampler = from_pdf_fn(|_| 1.0, support, BuildOptions::default()).unwrap();
+        let sampler = from_pdf_fn(|_| 1.0, support).unwrap();
         let mut sum = 0.0;
         let n = 4000;
         for _ in 0..n {
@@ -82,7 +85,7 @@ mod tests {
     #[test]
     fn triangular_ppf() {
         let support = Interval::new(0.0, 1.0).unwrap();
-        let sampler = from_pdf_fn(|x| 2.0 * x, support, BuildOptions::default()).unwrap();
+        let sampler = from_pdf_fn(|x| 2.0 * x, support).unwrap();
         let x = sampler.ppf(0.25).unwrap();
         assert!((x - 0.5).abs() < 1e-3, "ppf(0.25)={x}");
         assert!((sampler.median().unwrap() - 2.0_f64.sqrt().recip()).abs() < 0.02);
@@ -129,10 +132,10 @@ mod tests {
     fn hermite_matches_bisection() {
         let support = Interval::new(0.0, 1.0).unwrap();
         let opts = BuildOptions::default().with_hermite(64);
-        let fast = from_pdf_fn(|x| 2.0 * x, support, opts).unwrap();
+        let fast = from_pdf_fn_with_options(|x| 2.0 * x, support, opts).unwrap();
         assert!(fast.uses_hermite_table());
         let u = 0.37;
-        let mut slow = from_pdf_fn(|x| 2.0 * x, support, BuildOptions::default()).unwrap();
+        let mut slow = from_pdf_fn(|x| 2.0 * x, support).unwrap();
         slow.clear_hermite_table();
         let xh = fast.ppf(u).unwrap();
         let xb = slow.ppf(u).unwrap();
@@ -147,7 +150,7 @@ mod tests {
         assert!((h.mean().unwrap() - 0.5).abs() < 1e-2);
 
         let inner = Interval::new(0.0, 1.0).unwrap();
-        let base = from_pdf_fn(|_| 1.0, inner, BuildOptions::default()).unwrap();
+        let base = from_pdf_fn(|_| 1.0, inner).unwrap();
         let _ = base.mean().unwrap();
 
         let scaled = from_pdf_loc_scale(PdfFn::new(|_| 1.0, inner), 10.0, 2.0, BuildOptions::default())
@@ -172,7 +175,7 @@ mod tests {
         use rand::distr::Distribution as RandDist;
 
         let support = Interval::new(0.0, 1.0).unwrap();
-        let sampler = from_pdf_fn(|_| 1.0, support, BuildOptions::default()).unwrap();
+        let sampler = from_pdf_fn(|_| 1.0, support).unwrap();
         let mut rng = rand::rng();
         let x: f64 = RandDist::sample(&sampler, &mut rng);
         assert!((0.0..=1.0).contains(&x));

@@ -17,6 +17,7 @@ pub enum BuildError {
     TruncationOutOfSupport,
     InvalidDimension,
     InvalidPdfMax,
+    TdrBuildFailed,
 }
 
 impl fmt::Display for BuildError {
@@ -38,6 +39,12 @@ impl fmt::Display for BuildError {
             }
             Self::InvalidDimension => write!(f, "invalid dimension"),
             Self::InvalidPdfMax => write!(f, "pdf_max must be finite and positive"),
+            Self::TdrBuildFailed => {
+                write!(
+                    f,
+                    "tdr failed to build hat function (try InvSqrt transform or explicit dpdf)"
+                )
+            }
         }
     }
 }

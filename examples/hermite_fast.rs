@@ -1,13 +1,13 @@
 //! Fast sampling using a Hermite PPF table (setup once, sample many times).
 
-use simsam::{from_pdf_fn, BuildOptions, Interval};
+use simsam::{from_pdf_fn_with_options, BuildOptions, Interval};
 
 fn main() {
     let support = Interval::new(0.0, 1.0).expect("support");
 
     // Triangular on [0,1]: f(x)=2x, F(x)=x^2
     let opts = BuildOptions::default().with_hermite(128);
-    let fast = from_pdf_fn(|x| 2.0 * x, support, opts).expect("fast sampler");
+    let fast = from_pdf_fn_with_options(|x| 2.0 * x, support, opts).expect("fast sampler");
     println!("uses hermite table: {}", fast.uses_hermite_table());
 
     // Compare a couple of quantiles

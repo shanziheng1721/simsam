@@ -82,6 +82,10 @@ name = "tdr_quadratic"
 path = "examples/tdr_quadratic.rs"
 
 [[example]]
+name = "sampling_methods"
+path = "examples/sampling_methods.rs"
+
+[[example]]
 name = "tdr_symbolic"
 path = "examples/tdr_symbolic.rs"
 required-features = ["symbolic"]

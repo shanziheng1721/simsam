@@ -1,15 +1,15 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use simsam::{from_pdf_fn, BuildOptions, Interval};
+use simsam::{from_pdf_fn, from_pdf_fn_with_options, BuildOptions, Interval};
 use std::hint::black_box;
 
 fn bench_ppf(c: &mut Criterion) {
     let support = Interval::new(0.0, 1.0).unwrap();
 
     // Triangular distribution: pdf(x) = 2x on [0,1]
-    let slow = from_pdf_fn(|x| 2.0 * x, support, BuildOptions::default()).unwrap();
-    let fast = from_pdf_fn(
+    let slow = from_pdf_fn(|x| 2.0 * x, support).unwrap();
+    let fast = from_pdf_fn_with_options(
         |x| 2.0 * x,
         support,
         BuildOptions::default().with_hermite(128),
@@ -30,8 +30,8 @@ fn bench_ppf(c: &mut Criterion) {
 
 fn bench_sampling(c: &mut Criterion) {
     let support = Interval::new(0.0, 1.0).unwrap();
-    let slow = from_pdf_fn(|x| 2.0 * x, support, BuildOptions::default()).unwrap();
-    let fast = from_pdf_fn(
+    let slow = from_pdf_fn(|x| 2.0 * x, support).unwrap();
+    let fast = from_pdf_fn_with_options(
         |x| 2.0 * x,
         support,
         BuildOptions::default().with_hermite(128),

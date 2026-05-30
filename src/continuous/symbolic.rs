@@ -1,5 +1,6 @@
-use crate::continuous::sampler::{BuildOptions, ContinuousSampler};
+use crate::continuous::sampler::{BuildOptions, ContinuousSampler, SampleMethod};
 use crate::continuous::integrate::integrate_fn;
+use crate::continuous::tdr::Dpdf;
 use crate::continuous::traits::{Cdf, HasSupport, Pdf};
 use crate::error::BuildError;
 use crate::support::Interval;
@@ -9,6 +10,7 @@ use simsym::{Expr, Symbol};
 /// Continuous distribution defined by a simsym expression for the PDF.
 pub struct SymbolicContinuous {
     pdf: Expr,
+    dpdf: Expr,
     var: Symbol,
     support: Interval,
     cdf_expr: Option<Expr>,
@@ -32,9 +34,11 @@ impl SymbolicContinuous {
         }
 
         let cdf_expr = pdf.clone().integrate(var).ok();
+        let dpdf = pdf.clone().diff(var);
 
         Ok(Self {
             pdf,
+            dpdf,
             var,
             support,
             cdf_expr,
@@ -60,6 +64,10 @@ impl SymbolicContinuous {
         &self.pdf
     }
 
+    pub fn dpdf_expr(&self) -> &Expr {
+        &self.dpdf
+    }
+
     pub fn var(&self) -> Symbol {
         self.var
     }
@@ -68,7 +76,9 @@ impl SymbolicContinuous {
         self.cdf_expr.is_some()
     }
 
-    /// Build a [`ContinuousSampler`] via inverse transform on this PDF.
+    /// Build a [`ContinuousSampler`] on this PDF.
+    ///
+    /// When [`BuildOptions::with_tdr`] is used, the cached symbolic dPDF is used for hat construction.
     pub fn sampler(
         &self,
         opts: BuildOptions,
@@ -77,7 +87,12 @@ impl SymbolicContinuous {
         BuildError,
     > {
         let adapter = SymbolicPdfAdapter { inner: self };
-        ContinuousSampler::from_pdf(adapter, opts)
+        if matches!(opts.sample_method, SampleMethod::Tdr(_)) {
+            let dpdf = SymbolicDpdfAdapter { inner: self };
+            ContinuousSampler::from_pdf_with_dpdf(adapter, dpdf, opts)
+        } else {
+            ContinuousSampler::from_pdf(adapter, opts)
+        }
     }
 }
 
@@ -119,7 +134,7 @@ impl HasSupport for SymbolicContinuous {
 
 /// Adapts [`SymbolicContinuous`] as a [`Pdf`] for [`ContinuousSampler::from_pdf`].
 pub struct SymbolicPdfAdapter<'a> {
-    inner: &'a SymbolicContinuous,
+    pub(crate) inner: &'a SymbolicContinuous,
 }
 
 impl Pdf for SymbolicPdfAdapter<'_> {
@@ -129,6 +144,24 @@ impl Pdf for SymbolicPdfAdapter<'_> {
 }
 
 impl HasSupport for SymbolicPdfAdapter<'_> {
+    fn support(&self) -> Interval {
+        self.inner.support
+    }
+}
+
+/// Adapts cached symbolic dPDF for TDR hat construction.
+pub struct SymbolicDpdfAdapter<'a> {
+    inner: &'a SymbolicContinuous,
+}
+
+impl Dpdf for SymbolicDpdfAdapter<'_> {
+    fn dpdf(&self, x: f64) -> f64 {
+        let raw = eval_f64(&self.inner.dpdf, &[(self.inner.var, x)]).unwrap_or(0.0);
+        raw / self.inner.norm
+    }
+}
+
+impl HasSupport for SymbolicDpdfAdapter<'_> {
     fn support(&self) -> Interval {
         self.inner.support
     }

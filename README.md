@@ -10,10 +10,22 @@ Define distributions by PDF or CDF (closures, histograms, location-scale transfo
 
 - `sample()` / `sample_with_rng()` — inverse transform (default: bisection + Newton)
 - [`BuildOptions::with_hermite(n)`](https://docs.rs/simsam) — fast PPF table (SciPy [`stats.sampling`](https://docs.scipy.org/doc/scipy/tutorial/stats/sampling.html)-style numerical inversion)
+- [`BuildOptions::with_tdr()`](https://docs.rs/simsam) — transformed density rejection (TDR); automatic numerical dPDF when only PDF is given
+- `from_pdf_dpdf_fn` — explicit dPDF for TDR (log-concave hat construction)
 - `rand::distr::Distribution` integration
 - Multivariate sampling: rejection sampling, Metropolis–Hastings (MH), Gibbs, HMC
 - Multivariate CDF approximation via Monte Carlo
 - Gaussian copula for correlated samples from arbitrary 1D marginals
+
+#### Choosing a 1D sampler
+
+| Goal | Method |
+|------|--------|
+| Default / need accurate `ppf` | `BuildOptions::default()` (inverse transform) |
+| Many samples, smooth unimodal CDF | `BuildOptions::default().with_hermite(128)` |
+| Have PDF (+ optional dPDF), rejection-friendly density | `BuildOptions::default().with_tdr()` |
+
+Note: `ppf`, `mean`, and other statistics always use numerical inverse CDF even when TDR is selected for `sample()`.
 
 ### Distribution API (SciPy-like)
 
@@ -31,6 +43,7 @@ Define distributions by PDF or CDF (closures, histograms, location-scale transfo
 | simsam | SciPy analogue |
 |--------|----------------|
 | `from_pdf_fn` / `from_cdf_fn` | Subclass `rv_continuous` |
+| `from_pdf_dpdf_fn` | TDR with explicit dPDF |
 | `from_histogram` | `rv_histogram` |
 | `from_pdf_loc_scale` | `loc` / `scale` parameters |
 | `Truncated` | Truncate to sub-interval |
@@ -47,10 +60,10 @@ Define distributions by PDF or CDF (closures, histograms, location-scale transfo
 ### PDF + statistics
 
 ```rust
-use simsam::{from_pdf_fn, BuildOptions, Interval};
+use simsam::{from_pdf_fn, Interval};
 
 let support = Interval::new(0.0, 1.0).unwrap();
-let dist = from_pdf_fn(|x| 3.0 * x * x, support, BuildOptions::default()).unwrap();
+let dist = from_pdf_fn(|x| 3.0 * x * x, support).unwrap();
 let x = dist.sample().unwrap();
 let m = dist.mean().unwrap();   // 0.75
 let v = dist.var().unwrap();
@@ -60,11 +73,35 @@ let (lo, hi) = dist.interval(0.9).unwrap();
 ### Fast Hermite sampling
 
 ```rust
+use simsam::{from_pdf_fn_with_options, BuildOptions, Interval};
+
 let opts = BuildOptions::default().with_hermite(128);
-let dist = from_pdf_fn(|x| 2.0 * x, support, opts).unwrap();
+let dist = from_pdf_fn_with_options(|x| 2.0 * x, support, opts).unwrap();
 for _ in 0..10_000 {
     let _ = dist.sample().unwrap();
 }
+```
+
+### TDR sampling
+
+```rust
+use simsam::{from_pdf_fn_with_options, BuildOptions, Interval, TdrBuildConfig, TdrTransform};
+
+let support = Interval::new(-1.0, 1.0).unwrap();
+let dist = from_pdf_fn_with_options(
+    |x| 1.0 - x * x,
+    support,
+    BuildOptions::default().with_tdr_config(TdrBuildConfig {
+        transform: TdrTransform::InvSqrt,
+        ..TdrBuildConfig::default()
+    }),
+)
+.unwrap();
+```
+
+```bash
+cargo run --example tdr_quadratic
+cargo run --example sampling_methods
 ```
 
 ### Histogram
