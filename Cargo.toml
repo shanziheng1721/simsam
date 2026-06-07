@@ -2,6 +2,16 @@
 name = "simsam"
 version = "0.1.0"
 edition = "2024"
+authors = ["单子亨 <ziheng1721@outlook.com>"]
+description = "Sample from custom discrete and continuous distributions (SciPy-like API)"
+readme = "README.md"
+license = "BSD-3-Clause"
+repository = "https://github.com/shanziheng1721/simsam"
+homepage = "https://github.com/shanziheng1721/simsam"
+documentation = "https://docs.rs/simsam"
+keywords = ["sampling", "probability", "distribution", "statistics", "mcmc"]
+categories = ["mathematics", "science"]
+exclude = ["python/**"]
 
 [dependencies]
 rand = "0.10.1"
