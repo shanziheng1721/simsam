@@ -36,7 +36,7 @@ features = ["pyo3/extension-module"]
 # abi3 extension: one CPython version per platform is enough.
 build = "cp39-*"
 skip = "pp* *-musllinux_*"
-test-command = "pytest {project}/tests"
+test-command = "pytest {package}/tests"
 test-requires = ["pytest"]
 
 [tool.cibuildwheel.linux]
