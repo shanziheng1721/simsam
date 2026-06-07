@@ -1,0 +1,54 @@
+[project]
+name = "simsam-rs"
+version = "0.1.0"
+description = "Sample from custom discrete and continuous distributions (Python bindings for the simsam Rust crate)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "单子亨", email = "ziheng1721@outlook.com" }]
+keywords = ["sampling", "probability", "distribution", "statistics", "mcmc"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.urls]
+Homepage = "https://github.com/shanziheng1721/simsam"
+Repository = "https://github.com/shanziheng1721/simsam"
+Documentation = "https://github.com/shanziheng1721/simsam/tree/main/python#readme"
+"Rust crate" = "https://crates.io/crates/simsam"
+
+[tool.maturin]
+manifest-path = "Cargo.toml"
+python-source = "."
+module-name = "simsam._simsam"
+features = ["pyo3/extension-module"]
+
+[tool.cibuildwheel]
+# abi3 extension: one CPython version per platform is enough.
+build = "cp39-*"
+skip = "pp* *-musllinux_*"
+test-command = "pytest {project}/tests"
+test-requires = ["pytest"]
+
+[tool.cibuildwheel.linux]
+manylinux-x86_64-image = "manylinux2014"
+
+[build-system]
+requires = ["maturin>=1.9,<2.0"]
+build-backend = "maturin"
+
+[dependency-groups]
+dev = [
+    "maturin>=1.9,<2.0",
+    "pytest>=8.0",
+    "numpy>=1.26",
+]

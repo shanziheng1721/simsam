@@ -190,6 +190,57 @@ cargo run --example multivar_factorization
 cargo run --example multivar_symbolic_hmc --features symbolic
 ```
 
+## Python
+
+Python bindings live in [`python/`](python/) as a separate maturin/PyO3 crate. The root Rust crate has **no** PyO3 dependency, so `cargo publish` from the repo root is unchanged.
+
+### Install (PyPI)
+
+```bash
+pip install simsam-rs
+```
+
+The PyPI distribution is named **simsam-rs** (the name `simsam` is taken on PyPI). Import in code is still `import simsam`.
+
+### Development
+
+```bash
+cd python
+uv sync
+uv run maturin develop --release
+uv run pytest
+```
+
+### Usage
+
+```python
+import simsam
+
+dist = simsam.from_pdf(lambda x: 2.0 * x, simsam.Interval(0.0, 1.0))
+print(dist.mean(), dist.sample_n(10_000))
+
+opts = simsam.BuildOptions.hermite(128)
+dist = simsam.from_pdf_with_options(lambda x: 3.0 * x * x, simsam.Interval(0, 1), opts)
+
+mh = simsam.metropolis_hastings(
+    lambda x, y: 1.0,
+    simsam.HyperRect([0.0, 0.0], [1.0, 1.0]),
+)
+print(mh.sample_n(1000))
+```
+
+Optional [simsym](https://docs.rs/simsym) symbolic PDFs (requires building with the `symbolic` Cargo feature):
+
+```bash
+uv run maturin develop --release --features symbolic,pyo3/extension-module
+```
+
+```python
+dist = simsam.symbolic_continuous("3 * x^2", "x", simsam.Interval(0.0, 1.0))
+```
+
+See [`python/README.md`](python/README.md) for the full Python API.
+
 ## Limitations
 
 - **Finite support** required; use a wide interval + [`Truncated`](https://docs.rs/simsam) for partial ranges.

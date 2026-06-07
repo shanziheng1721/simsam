@@ -1,0 +1,22 @@
+[package]
+name = "simsam-python"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "_simsam"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["abi3-py38"] }
+rand = "0.10.1"
+rand_chacha = "0.10.0"
+simsam = { path = ".." }
+simsym = { version = "0.1.0", optional = true }
+
+[features]
+default = []
+symbolic = ["simsam/symbolic", "dep:simsym"]
+
+[profile.release]
+lto = "thin"

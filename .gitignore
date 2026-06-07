@@ -24,3 +24,17 @@ target
 # Added by cargo
 
 /target
+
+# Python bindings
+python/.venv/
+python/target/
+python/simsam/*.so
+python/simsam/*.pyd
+python/dist/
+python/*.egg-info/
+/python/tests/__pycache__
+/python/simsam/__pycache__
+
+# PyPI build artifacts (local / CI)
+/dist/
+/wheelhouse/
